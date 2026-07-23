@@ -21,14 +21,14 @@ Example request:
 
 The quote calculation intentionally contains a bug for a Claude Managed Agents demo.
 
-Correct behavior should apply the discount before tax:
+Correct behavior should apply the tax percentage to the discounted subtotal:
 
 ```text
 discounted_subtotal = subtotal - (subtotal * discount_percent / 100)
 total = discounted_subtotal + (discounted_subtotal * tax_percent / 100)
 ```
 
-This service currently applies tax before discount, which causes the included pytest to fail.
+This service currently adds `tax_percent` as a flat amount instead of calculating percentage-based tax, which causes the included pytest to fail.
 
 ## Install
 

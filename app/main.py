@@ -26,7 +26,7 @@ def healthz() -> dict[str, bool]:
 @app.post("/orders/quote", response_model=QuoteResponse)
 def create_quote(order: QuoteRequest) -> QuoteResponse:
     discounted_subtotal = order.subtotal * (1 - order.discount_percent / 100)
-    total = discounted_subtotal * (1 + order.tax_percent / 100)
+    total = discounted_subtotal + order.tax_percent
 
     return QuoteResponse(
         subtotal=order.subtotal,
