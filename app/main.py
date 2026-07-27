@@ -6,9 +6,9 @@ app = FastAPI(title="nexai-demo-incident-service")
 
 
 class QuoteRequest(BaseModel):
-    subtotal: float = Field(ge=0)
-    discount_percent: float = Field(ge=0, le=100)
-    tax_percent: float = Field(ge=0)
+    subtotal: float
+    discount_percent: float
+    tax_percent: float
 
 
 class QuoteResponse(BaseModel):
@@ -16,6 +16,11 @@ class QuoteResponse(BaseModel):
     discount_percent: float
     tax_percent: float
     total: float
+
+
+class ValidationResponse(BaseModel):
+    valid: bool
+    errors: list[str] = []
 
 
 @app.get("/healthz")
@@ -34,3 +39,17 @@ def create_quote(order: QuoteRequest) -> QuoteResponse:
         tax_percent=order.tax_percent,
         total=round(total, 2),
     )
+
+
+@app.post("/orders/validate", response_model=ValidationResponse)
+def validate_order(order: QuoteRequest) -> ValidationResponse:
+    errors = []
+
+    if order.subtotal < 0:
+        errors.append("subtotal must be non-negative")
+    if not (0 <= order.discount_percent <= 100):
+        errors.append("discount_percent must be between 0 and 100")
+    if order.tax_percent < 0:
+        errors.append("tax_percent must be non-negative")
+
+    return ValidationResponse(valid=len(errors) == 0, errors=errors)
