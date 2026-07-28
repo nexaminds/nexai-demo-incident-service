@@ -1,11 +1,12 @@
 # nexai-demo-incident-service
 
-A tiny FastAPI service for demonstrating an incident flow around an order quote calculation.
+Small FastAPI service used to demonstrate a Managed Agents delivery flow.
 
-## What The Service Does
+## API
 
-- `GET /healthz` returns a basic health check response.
-- `POST /orders/quote` accepts an order subtotal, discount percentage, and tax percentage, then returns a calculated quote total.
+- `GET /healthz`
+- `POST /orders/quote`
+- `POST /orders/validate`
 
 Example request:
 
@@ -17,43 +18,36 @@ Example request:
 }
 ```
 
-## Known Intentional Bug
+The quote endpoint applies the discount before percentage-based tax. The validation endpoint reports invalid subtotal, discount, and tax values without changing quote behavior.
 
-The quote calculation intentionally contains a bug for a Claude Managed Agents demo.
-
-Correct behavior should apply the tax percentage to the discounted subtotal:
-
-```text
-discounted_subtotal = subtotal - (subtotal * discount_percent / 100)
-total = discounted_subtotal + (discounted_subtotal * tax_percent / 100)
-```
-
-This service currently adds `tax_percent` as a flat amount instead of calculating percentage-based tax, which causes the included pytest to fail.
-
-## Install
+## Run locally
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-On Windows PowerShell:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-## Run
-
-```bash
 uvicorn app.main:app --reload
 ```
 
-## Test
+On Windows, activate with `.\.venv\Scripts\Activate.ps1`.
+
+Run tests with:
 
 ```bash
-pytest
+pytest -q
 ```
+
+## Deploy
+
+A human-reviewed merge to `main` runs `.github/workflows/deploy-gke.yml`. The workflow tests the app, builds an immutable image tagged with the merged Git SHA, pushes it to Artifact Registry, deploys `k8s/` to GKE, waits for rollout, and verifies `/healthz` plus `/orders/validate`.
+
+The GitHub repository requires these Actions variables:
+
+- `GCP_PROJECT_ID`
+- `GCP_REGION`
+- `GAR_REPOSITORY`
+- `GKE_CLUSTER`
+- `GKE_LOCATION`
+- `K8S_NAMESPACE` (`nexai-demo`)
+
+It also requires `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_SERVICE_ACCOUNT` Actions secrets. Authentication is keyless through GCP Workload Identity Federation.

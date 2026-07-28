@@ -1,0 +1,139 @@
+name: Test and deploy to GKE
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: nexai-demo-gke
+  cancel-in-progress: false
+
+env:
+  SERVICE_NAME: nexai-demo-incident-service
+  IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GAR_REPOSITORY }}/nexai-demo-incident-service:${{ github.sha }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pytest -q
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: demo
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
+        shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY }}
+          GKE_CLUSTER: ${{ vars.GKE_CLUSTER }}
+          GKE_LOCATION: ${{ vars.GKE_LOCATION }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        run: |
+          required=(
+            GCP_PROJECT_ID
+            GCP_REGION
+            GAR_REPOSITORY
+            GKE_CLUSTER
+            GKE_LOCATION
+            K8S_NAMESPACE
+            GCP_WORKLOAD_IDENTITY_PROVIDER
+            GCP_SERVICE_ACCOUNT
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing GitHub Actions configuration: ${name}" >&2
+              exit 1
+            fi
+          done
+          if [[ "$K8S_NAMESPACE" != "nexai-demo" ]]; then
+            echo "K8S_NAMESPACE must be nexai-demo for the reviewed manifests" >&2
+            exit 1
+          fi
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: gke-gcloud-auth-plugin
+
+      - name: Configure Artifact Registry authentication
+        run: gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+
+      - name: Build and push immutable image
+        run: |
+          docker build --tag "$IMAGE" .
+          docker push "$IMAGE"
+
+      - uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ vars.GKE_CLUSTER }}
+          location: ${{ vars.GKE_LOCATION }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Deploy merged SHA
+        run: |
+          kubectl apply -f k8s/service.yaml
+          sed "s|IMAGE_PLACEHOLDER|$IMAGE|g" k8s/deployment.yaml | kubectl apply -f -
+          kubectl --namespace "${{ vars.K8S_NAMESPACE }}" rollout status deployment/$SERVICE_NAME --timeout=5m
+
+      - name: Verify health and validation endpoint
+        shell: bash
+        run: |
+          namespace="${{ vars.K8S_NAMESPACE }}"
+          endpoint=""
+          for attempt in {1..30}; do
+            endpoint="$(kubectl --namespace "$namespace" get service "$SERVICE_NAME" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+            if [[ -z "$endpoint" ]]; then
+              endpoint="$(kubectl --namespace "$namespace" get service "$SERVICE_NAME" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+            fi
+            [[ -n "$endpoint" ]] && break
+            sleep 10
+          done
+          if [[ -z "$endpoint" ]]; then
+            echo "LoadBalancer endpoint was not assigned within 5 minutes" >&2
+            kubectl --namespace "$namespace" describe service "$SERVICE_NAME"
+            exit 1
+          fi
+          curl --fail --show-error --silent --retry 12 --retry-connrefused --retry-delay 5 "http://${endpoint}/healthz"
+          validation="$(curl --fail --show-error --silent             --header "Content-Type: application/json"             --data '{"subtotal":100,"discount_percent":10,"tax_percent":5}'             "http://${endpoint}/orders/validate")"
+          grep --fixed-strings '"valid":true' <<< "$validation"
+          echo "SERVICE_URL=http://${endpoint}" >> "$GITHUB_ENV"
+
+      - name: Publish deployment evidence
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## GKE deployment"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Image: \`${IMAGE}\`"
+            echo "- Cluster: \`${{ vars.GKE_CLUSTER }}\`"
+            echo "- Namespace: \`${{ vars.K8S_NAMESPACE }}\`"
+            echo "- Service URL: ${SERVICE_URL:-unavailable}"
+            echo "- Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } >> "$GITHUB_STEP_SUMMARY"
