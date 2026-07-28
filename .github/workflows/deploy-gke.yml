@@ -38,7 +38,6 @@ jobs:
         run: python -m pytest -q tests
 
   deploy:
-    if: github.event_name != 'pull_request'
     needs: test
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
