@@ -40,6 +40,7 @@ jobs:
   deploy:
     if: github.event_name != 'pull_request'
     needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment: demo
     steps:
@@ -128,7 +129,10 @@ jobs:
             exit 1
           fi
           curl --fail --show-error --silent --retry 12 --retry-connrefused --retry-delay 5 "http://${endpoint}/healthz"
-          validation="$(curl --fail --show-error --silent             --header "Content-Type: application/json"             --data '{"subtotal":100,"discount_percent":10,"tax_percent":5}'             "http://${endpoint}/orders/validate")"
+          validation="$(curl --fail --show-error --silent \
+            --header "Content-Type: application/json" \
+            --data '{"subtotal":100,"discount_percent":10,"tax_percent":5}' \
+            "http://${endpoint}/orders/validate")"
           grep --fixed-strings '"valid":true' <<< "$validation"
           echo "SERVICE_URL=http://${endpoint}" >> "$GITHUB_ENV"
 
