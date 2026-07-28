@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -27,11 +30,16 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install -r requirements.txt
-      - run: pytest -q
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m pytest -q tests
 
   deploy:
     needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment: demo
     steps:
@@ -120,7 +128,10 @@ jobs:
             exit 1
           fi
           curl --fail --show-error --silent --retry 12 --retry-connrefused --retry-delay 5 "http://${endpoint}/healthz"
-          validation="$(curl --fail --show-error --silent             --header "Content-Type: application/json"             --data '{"subtotal":100,"discount_percent":10,"tax_percent":5}'             "http://${endpoint}/orders/validate")"
+          validation="$(curl --fail --show-error --silent \
+            --header "Content-Type: application/json" \
+            --data '{"subtotal":100,"discount_percent":10,"tax_percent":5}' \
+            "http://${endpoint}/orders/validate")"
           grep --fixed-strings '"valid":true' <<< "$validation"
           echo "SERVICE_URL=http://${endpoint}" >> "$GITHUB_ENV"
 
@@ -130,10 +141,10 @@ jobs:
         run: |
           {
             echo "## GKE deployment"
-            echo "- Commit: \`${GITHUB_SHA}\`"
-            echo "- Image: \`${IMAGE}\`"
-            echo "- Cluster: \`${{ vars.GKE_CLUSTER }}\`"
-            echo "- Namespace: \`${{ vars.K8S_NAMESPACE }}\`"
+            echo "- Commit: \\`${GITHUB_SHA}\\`"
+            echo "- Image: \\`${IMAGE}\\`"
+            echo "- Cluster: \\`${{ vars.GKE_CLUSTER }}\\`"
+            echo "- Namespace: \\`${{ vars.K8S_NAMESPACE }}\\`"
             echo "- Service URL: ${SERVICE_URL:-unavailable}"
             echo "- Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           } >> "$GITHUB_STEP_SUMMARY"
