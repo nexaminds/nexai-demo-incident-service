@@ -141,10 +141,10 @@ jobs:
         run: |
           {
             echo "## GKE deployment"
-            echo "- Commit: \\`${GITHUB_SHA}\\`"
-            echo "- Image: \\`${IMAGE}\\`"
-            echo "- Cluster: \\`${{ vars.GKE_CLUSTER }}\\`"
-            echo "- Namespace: \\`${{ vars.K8S_NAMESPACE }}\\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Image: \`${IMAGE}\`"
+            echo "- Cluster: \`${{ vars.GKE_CLUSTER }}\`"
+            echo "- Namespace: \`${{ vars.K8S_NAMESPACE }}\`"
             echo "- Service URL: ${SERVICE_URL:-unavailable}"
             echo "- Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           } >> "$GITHUB_STEP_SUMMARY"
