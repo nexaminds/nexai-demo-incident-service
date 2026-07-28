@@ -1,0 +1,10 @@
+.git
+.github
+.venv
+.pytest_cache
+**/__pycache__
+*.pyc
+gha-creds-*.json
+tests
+k8s
+README.md
