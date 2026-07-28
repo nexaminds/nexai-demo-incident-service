@@ -1,1 +1,1 @@
-﻿"""Demo incident service package."""
+"""NexAI demo incident service package."""
