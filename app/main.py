@@ -49,7 +49,7 @@ def validate_order(order: QuoteRequest) -> ValidationResponse:
         errors.append("subtotal must be non-negative")
     if not (0 <= order.discount_percent <= 100):
         errors.append("discount_percent must be between 0 and 100")
-    if order.tax_percent < 0:
+    if order.tax_percent <= 0:
         errors.append("tax_percent must be non-negative")
 
     return ValidationResponse(valid=len(errors) == 0, errors=errors)
